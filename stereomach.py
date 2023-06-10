@@ -7,6 +7,14 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 '''
+-------------------------
+Pré-traitement des images
+-------------------------
+'''
+#TODO
+
+
+'''
 -----------------------------------------------------
 Fonctions optimisées de block matching classique
 -----------------------------------------------------
@@ -122,6 +130,26 @@ def blockMatchingTreshold(imgGrayLeft, imgGrayRight, maxdisp, N, refIsLeft : boo
                 dispMap[y,x] = disp
     return dispMap
 
+
+'''
+------------------------------------------------------------------------------------------------------------
+Sélection des appariements d'après la contrainte de symétrie (Avec seuil de tolérance pour limiter la perte)
+------------------------------------------------------------------------------------------------------------
+'''
+def checkLeftRightSymmetry(dispLeft, dispRight, tolerance) :
+    newDisps = np.copy(dispLeft)
+    for y in range(dispLeft.shape[0]) :
+        for x in range(dispLeft.shape[1]) :
+            disp = dispLeft[y,x]
+            if disp == -1 :
+                continue
+            borneInf = max(x-disp-tolerance, 0)
+            borneSup = min(x-disp+tolerance, dispRight.shape[1])
+            correspondants = dispRight[y, borneInf:borneSup]
+            if np.all(np.logical_or(correspondants < disp - tolerance, correspondants > disp + tolerance), 0) :
+                newDisps[y,x] = -1
+    
+    return newDisps
 
 
 '''

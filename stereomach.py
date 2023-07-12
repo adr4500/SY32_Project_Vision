@@ -1,9 +1,13 @@
+# coding: utf-8
+
 import numpy as np
 from skimage import data
 from skimage.color import rgb2gray
 from skimage import io 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import sys
+import cv2
 
 
 '''
@@ -130,6 +134,57 @@ def blockMatchingTreshold(imgGrayLeft, imgGrayRight, maxdisp, N, refIsLeft : boo
                 dispMap[y,x] = disp
     return dispMap
 
+'''
+---------------------
+Block matching en RGB
+---------------------
+'''
+def findDispFromSADColor(block, blocksOfLine) :
+    diffs = np.abs(np.subtract(blocksOfLine, block, dtype=int))
+    sads = np.sum(diffs, axis=(1,2,3))
+    if sads.shape[0] == 0 :
+        return -1
+    return np.argmin(sads)
+
+def block_matching_rgb(imgLeft, imgRight, maxdisp, N, refIsLeft : bool) :
+    # N doit être impair
+    n = int(np.floor(N/2))
+    if refIsLeft :
+        borneSupX = imgLeft.shape[1] - n 
+        borneSupY = imgLeft.shape[0] - n 
+        dispMap = np.full_like(rgb2gray(imgLeft), -1, int)
+        for y in range(n+1, borneSupY) :
+            lineBlocks = []
+            for x in range(n+1, borneSupX) :
+                block = get_pixel_block(imgRight, x, y, N)
+                lineBlocks.append(block)
+            lineBlocks = np.array(lineBlocks)
+
+            for x in range(n+1, borneSupX) :
+                blockRef = get_pixel_block(imgLeft, x, y, N)
+                maxBlockInd = max(x-maxdisp, 0)
+                disp = findDispFromSADColor(blockRef, lineBlocks[maxBlockInd:x])
+                if disp != -1 :
+                    dispMap[y,x] = np.abs(disp - maxdisp)
+    else :
+        borneSupX = imgRight.shape[1] - n 
+        borneSupY = imgRight.shape[0] - n 
+        dispMap = np.full_like(rgb2gray(imgRight), -1, int)
+        for y in range(n+1, borneSupY) :
+            lineBlocks = []
+            for x in range(n+1, borneSupX) :
+                block = get_pixel_block(imgLeft, x, y, N)
+                lineBlocks.append(block)
+            lineBlocks = np.array(lineBlocks)
+
+            for x in range(n+1, borneSupX) :
+                blockRef = get_pixel_block(imgRight, x, y, N)
+                maxBlockInd = min(x+maxdisp, imgRight.shape[1])
+                disp = findDispFromSADColor(blockRef, lineBlocks[x:maxBlockInd])
+                if disp != -1 :
+                    dispMap[y,x] = np.abs(disp - maxdisp)
+    return dispMap
+
 
 '''
 ------------------------------------------------------------------------------------------------------------
@@ -170,8 +225,34 @@ def filtre_mode(dispMap, sizeFiltre) :
     
     return newDispMap
 
+'''
+----
+Main
+----
+'''
+def main(img_gauche, img_droite, sortie_path):
+    gauche = io.imread(img_gauche)
+    droite = io.imread(img_droite)
+
+    gauche_gris = (rgb2gray(gauche) * 255).astype("uint8")
+    droite_gris = (rgb2gray(droite) * 255).astype("uint8")
+    
+    # On utilise le block matching couleur
+    dispMapLeft = block_matching_rgb(gauche, droite, 50, 5, True)
+    dispMapRight = block_matching_rgb(gauche, droite, 50, 5, False)
+    dispMap = checkLeftRightSymmetry(dispMapLeft, dispMapRight, 50)
+
+    # On filtre les disparités
+    dispMap = filtre_mode(dispMap, 5)
+
+    # Multiplication par 4 pour avoir les valeurs en pixels
+    dispMap = dispMap * 4
+
+    # Export de la carte de disparité
+    cv2.imwrite(sortie_path, dispMap)
 
 
-
-
-# Main à faire
+if __name__ == '__main__':
+    # arguments
+    assert len(sys.argv) == 4, "Il faut 3 arguments : evaldisp.py disparites_verite.png occultations_verite.png disparites_estimees.png"
+    main(sys.argv[1], sys.argv[2], sys.argv[3])
